@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Rodada — Key Hunt{% endblock %}
+{% block page %}game{% endblock %}
+{% block content %}
+<section class="game-shell" data-round-id="{{ round_id | e }}" aria-labelledby="track-title">
+  <div id="cover" class="cover skeleton" aria-hidden="true">
+    <img id="thumbnail" alt="" hidden>
+    <div class="cover-fallback"><span>♬</span></div>
+  </div>
+  <div class="game-card">
+    <div class="status-line">
+      <span id="status-badge" class="badge">Na fila</span>
+      <span id="processing-text" class="subtle" role="status" aria-live="polite">Preparando sua faixa…</span>
+    </div>
+    <h1 id="track-title" class="track-title skeleton-text">Carregando faixa</h1>
+    <p id="track-artist" class="artist">Só um instante</p>
+    <div id="player-wrap" class="player-wrap" hidden>
+      <div class="mini-player">
+        <div class="waveform" aria-hidden="true">
+          <span style="--i: 1"></span>
+          <span style="--i: 2"></span>
+          <span style="--i: 3"></span>
+          <span style="--i: 4"></span>
+          <span style="--i: 5"></span>
+          <span style="--i: 6"></span>
+          <span style="--i: 7"></span>
+          <span style="--i: 8"></span>
+          <span style="--i: 9"></span>
+          <span style="--i: 10"></span>
+          <span style="--i: 11"></span>
+          <span style="--i: 12"></span>
+          <span style="--i: 13"></span>
+          <span style="--i: 14"></span>
+          <span style="--i: 15"></span>
+          <span style="--i: 16"></span>
+        </div>
+        <div class="player-controls">
+          <button id="player-toggle" class="player-toggle" type="button" aria-label="Reproduzir música">▶</button>
+          <div class="time-block">
+            <span id="current-time">0:00</span>
+            <span class="time-separator">/</span>
+            <span id="duration-time">0:00</span>
+          </div>
+        </div>
+        <div class="volume-box">
+          <span class="volume-icon" aria-hidden="true">🔊</span>
+          <input id="player-volume" class="volume-slider" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" />
+        </div>
+      </div>
+      <audio id="audio-player" preload="metadata" hidden>Seu navegador não oferece suporte ao player de áudio.</audio>
+    </div>
+    <div id="reveal-area" class="reveal-area">
+      <button id="reveal-button" class="button primary wide" type="button" disabled>Revelar tom</button>
+      <p id="game-message" class="message" role="status" aria-live="polite"></p>
+    </div>
+    <section id="answer-panel" class="answer-panel" hidden aria-live="polite">
+      <p class="eyebrow">Resultado da análise</p>
+      <p id="answer" class="answer"></p>
+      <p id="confidence-note" class="subtle"></p>
+      <div class="result-actions" role="group" aria-label="Como você se saiu?">
+        <button class="button success" data-result="correct" type="button">✓ Acertei</button>
+        <button class="button danger" data-result="incorrect" type="button">× Errei</button>
+      </div>
+    </section>
+    <div id="next-area" class="next-area" hidden>
+      <button id="next-button" class="button secondary" type="button">Próxima música</button>
+      <a class="text-link" href="/stats">Ver minhas estatísticas</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

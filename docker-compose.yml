@@ -1,0 +1,13 @@
+services:
+  key-hunt:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      KEY_HUNT_SECRET_KEY: "replace-this-development-secret-before-production"
+    volumes:
+      - key-hunt-data:/data
+
+volumes:
+  key-hunt-data:
+

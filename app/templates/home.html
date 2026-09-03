@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Key Hunt — treine seu ouvido{% endblock %}
+{% block page %}home{% endblock %}
+{% block content %}
+<section class="hero" aria-labelledby="hero-title">
+  <p class="eyebrow">Treino auditivo, faixa por faixa</p>
+  <h1 id="hero-title">Você reconhece o tom<br>antes de ver a resposta?</h1>
+  <p class="lede">Cole uma playlist pública do YouTube. Nós sorteamos uma música para você ouvir, decidir e revelar.</p>
+  <form id="playlist-form" class="playlist-form" novalidate>
+    <label for="playlist-url">URL da playlist</label>
+    <div class="input-row">
+      <input id="playlist-url" name="url" type="url" inputmode="url" autocomplete="url"
+             placeholder="https://www.youtube.com/playlist?list=…" required aria-describedby="url-help form-message">
+      <button class="button primary" type="submit">
+        <span class="button-label">Carregar playlist</span>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+    </div>
+    <p id="url-help" class="help">Apenas playlists públicas; até o limite configurado pelo servidor.</p>
+    <p id="form-message" class="message" role="status" aria-live="polite"></p>
+  </form>
+</section>
+<section class="steps" aria-label="Como jogar">
+  <article><span>01</span><h2>Ouça</h2><p>O player aparece assim que o áudio está pronto.</p></article>
+  <article><span>02</span><h2>Decida</h2><p>Encontre a tônica e perceba se o caráter é maior ou menor.</p></article>
+  <article><span>03</span><h2>Revele</h2><p>Confira a análise, registre seu resultado e acompanhe sua evolução.</p></article>
+</section>
+{% endblock %}
+

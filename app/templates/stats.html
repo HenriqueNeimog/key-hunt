@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Estatísticas — Key Hunt{% endblock %}
+{% block page %}stats{% endblock %}
+{% block content %}
+<section class="stats-shell" aria-labelledby="stats-title">
+  <p class="eyebrow">Seu progresso local</p>
+  <h1 id="stats-title">Estatísticas</h1>
+  <p id="stats-status" class="message" role="status" aria-live="polite">Carregando seu histórico…</p>
+  <div id="stats-content" hidden>
+    <div class="metric-grid">
+      <article><span>Total</span><strong id="metric-total">0</strong></article>
+      <article><span>Acertos</span><strong id="metric-correct">0</strong></article>
+      <article><span>Erros</span><strong id="metric-incorrect">0</strong></article>
+      <article class="accent"><span>Aproveitamento</span><strong id="metric-accuracy">0%</strong></article>
+    </div>
+    <div class="stats-grid">
+      <section class="panel" aria-labelledby="keys-heading">
+        <h2 id="keys-heading">Desempenho por tom</h2>
+        <div class="table-wrap">
+          <table><thead><tr><th>Tom</th><th>Acertos</th><th>Taxa</th></tr></thead><tbody id="key-rows"></tbody></table>
+        </div>
+        <p id="keys-empty" class="empty" hidden>Nenhuma resposta registrada ainda.</p>
+      </section>
+      <section class="panel" aria-labelledby="history-heading">
+        <h2 id="history-heading">Histórico recente</h2>
+        <ol id="history-list" class="history"></ol>
+        <p id="history-empty" class="empty" hidden>Jogue uma rodada para começar seu histórico.</p>
+      </section>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

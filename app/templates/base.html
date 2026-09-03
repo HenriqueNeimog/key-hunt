@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0c10">
+  <title>{% block title %}Key Hunt{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
+  <script defer src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script defer src="{{ url_for('static', path='/js/app.js') }}"></script>
+</head>
+<body data-page="{% block page %}base{% endblock %}">
+  <a class="skip-link" href="#content">Pular para o conteúdo</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Key Hunt — início" hx-boost="true">
+      <span class="brand-mark" aria-hidden="true">♯</span>
+      <span>Key Hunt</span>
+    </a>
+    <nav aria-label="Navegação principal">
+      <a href="/stats" hx-boost="true">Estatísticas</a>
+    </nav>
+  </header>
+  <main id="content">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    Use somente conteúdo que você tem direito de acessar. O Key Hunt não contorna DRM,
+    login ou restrições de conteúdo.
+  </footer>
+</body>
+</html>
