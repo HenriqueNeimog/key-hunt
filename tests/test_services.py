@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from app.config import Settings
 from app.domain.enums import MusicalScale, RoundResult, RoundStatus
@@ -93,7 +96,9 @@ def test_audio_path_rejects_traversal(tmp_path: Path) -> None:
         raise AssertionError("path traversal was accepted")
 
 
-def test_yt_dlp_falls_back_when_windows_subprocess_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_yt_dlp_falls_back_when_windows_subprocess_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = YtDlpClient(metadata_timeout=30, download_timeout=30, max_audio_bytes=50_000_000)
 
     async def boom(*args: object, **kwargs: object) -> object:
@@ -109,7 +114,9 @@ def test_yt_dlp_falls_back_when_windows_subprocess_is_unavailable(monkeypatch: p
     assert payload == b'{"ok": true}'
 
 
-def test_download_converts_non_mp3_to_browser_safe_mp3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_download_converts_non_mp3_to_browser_safe_mp3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     client = YtDlpClient(metadata_timeout=30, download_timeout=30, max_audio_bytes=50_000_000)
     destination = tmp_path / "media"
     destination.mkdir()
@@ -129,6 +136,89 @@ def test_download_converts_non_mp3_to_browser_safe_mp3(tmp_path: Path, monkeypat
     result = asyncio.run(client.download("abc123", destination))
     assert result.name == "abc123.mp3"
     assert result.read_bytes() == b"converted"
+
+
+def test_playlist_metadata_deduplicates_repeated_videos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = YtDlpClient(metadata_timeout=30, download_timeout=30, max_audio_bytes=50_000_000)
+    payload = {
+        "id": "PLabcdefghij",
+        "title": "Repeated songs",
+        "entries": [
+            {"id": "video000001", "title": "First", "playlist_index": 1},
+            {"id": "video000001", "title": "Repeated", "playlist_index": 2},
+            {"id": "video000002", "title": "Second", "playlist_index": 3},
+        ],
+    }
+
+    async def fake_run(*args: object, **kwargs: object) -> bytes:
+        return json.dumps(payload).encode()
+
+    monkeypatch.setattr(client, "_run", fake_run)
+
+    metadata = asyncio.run(client.fetch_playlist("https://youtube.test", 100))
+
+    assert [track.video_id for track in metadata.tracks] == ["video000001", "video000002"]
+    assert [track.position for track in metadata.tracks] == [1, 3]
+
+
+def test_fetch_playlist_downloads_thumbnail_locally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    media_dir = tmp_path / "media"
+    client = YtDlpClient(
+        metadata_timeout=30,
+        download_timeout=30,
+        max_audio_bytes=50_000_000,
+        media_dir=media_dir,
+    )
+    payload = {
+        "id": "PLabcdefghij",
+        "title": "Playlist de capa",
+        "entries": [
+            {
+                "id": "video000001",
+                "title": "Primeira faixa",
+                "thumbnail": "https://i.ytimg.com/vi/video000001/hqdefault.jpg",
+                "channel": "Artista",
+                "duration": 123,
+            }
+        ],
+    }
+
+    async def fake_run(*args: object, **kwargs: object) -> bytes:
+        return json.dumps(payload).encode()
+
+    class FakeHeaders:
+        def get_content_type(self) -> str:
+            return "image/jpeg"
+
+    class FakeResponse:
+        headers = FakeHeaders()
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+
+        def read(self) -> bytes:
+            return b"thumb-bytes"
+
+    def fake_urlopen(url: object, timeout: int | None = None) -> FakeResponse:
+        del timeout
+        requested = getattr(url, "full_url", url)
+        assert requested == payload["entries"][0]["thumbnail"]
+        return FakeResponse()
+
+    monkeypatch.setattr(client, "_run", fake_run)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    metadata = asyncio.run(client.fetch_playlist("https://youtube.test", 10))
+
+    assert metadata.tracks[0].thumbnail_url == "/media/thumbnails/video000001.jpg"
+    assert (media_dir / "thumbnails" / "video000001.jpg").read_bytes() == b"thumb-bytes"
 
 
 def test_round_state_transitions() -> None:

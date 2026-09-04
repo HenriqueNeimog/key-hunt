@@ -62,6 +62,13 @@ def test_complete_flow_and_caches(
         headers=csrf_headers,
     )
     assert result.status_code == 200
+    repeated = client.post(
+        f"/api/rounds/{round_id}/result",
+        json={"result": "correct"},
+        headers=csrf_headers,
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["result"] == "correct"
     assert (
         client.post(
             f"/api/rounds/{round_id}/result",
@@ -70,6 +77,10 @@ def test_complete_flow_and_caches(
         ).status_code
         == 409
     )
+
+    status = client.get(f"/api/rounds/{round_id}/status")
+    assert status.status_code == 200
+    assert status.json()["answered"] is True
 
     stats = client.get("/api/stats").json()
     assert stats["total"] == 1

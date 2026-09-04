@@ -12,11 +12,21 @@ class RoundRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create(self, *, player_id: str, playlist_id: str, track_id: str) -> GameRound:
+    def create(
+        self,
+        *,
+        player_id: str,
+        playlist_id: str,
+        track_id: str,
+        game_session_id: str | None = None,
+        session_position: int | None = None,
+    ) -> GameRound:
         game_round = GameRound(
             player_id=player_id,
             playlist_id=playlist_id,
             track_id=track_id,
+            game_session_id=game_session_id,
+            session_position=session_position,
             status=RoundStatus.QUEUED,
         )
         self._session.add(game_round)

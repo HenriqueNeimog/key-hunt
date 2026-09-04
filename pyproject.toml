@@ -9,6 +9,7 @@ description = "Treino auditivo de tonalidade com playlists públicas do YouTube"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+  "aiokafka>=0.14,<0.15",
   "alembic>=1.14,<2",
   "fastapi>=0.115,<1",
   "jinja2>=3.1,<4",
@@ -20,7 +21,7 @@ dependencies = [
   "yt-dlp>=2025.1.15",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
   "httpx>=0.28,<1",
   "mypy>=1.14,<2",
@@ -29,6 +30,8 @@ dev = [
   "ruff>=0.9,<1",
   "types-jinja2>=2.11.9,<3",
 ]
+
+[project.optional-dependencies]
 analysis = ["essentia>=2.1b6.dev1110"]
 
 [tool.hatch.build.targets.wheel]
@@ -37,6 +40,7 @@ packages = ["app"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+exclude = ["tmp_pytest"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "RUF"]
@@ -58,6 +62,6 @@ exclude = ["alembic"]
 
 [tool.pytest.ini_options]
 addopts = "-q -m 'not integration'"
+testpaths = ["tests"]
 asyncio_mode = "auto"
-markers = ["integration: requer dependencias nativas e e executado sob demanda"]
-
+markers = ["integration: requer dependências externas e é executado sob demanda"]

@@ -5,9 +5,12 @@ import json
 import re
 import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
+from urllib.error import URLError
+from urllib.parse import urlsplit
 
 
 class ExternalMediaError(RuntimeError):
@@ -51,15 +54,73 @@ class YtDlpClient:
         metadata_timeout: int,
         download_timeout: int,
         max_audio_bytes: int,
+        media_dir: Path | None = None,
     ) -> None:
         self._metadata_timeout = metadata_timeout
         self._download_timeout = download_timeout
         self._max_audio_bytes = max_audio_bytes
+        self._media_dir = (media_dir or Path("media")).resolve()
+
+    @staticmethod
+    def _thumbnail_suffix(source_url: str) -> str:
+        suffix = Path(source_url.split("?", 1)[0]).suffix.lower()
+        if suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+            return suffix.lstrip(".")
+        return "jpg"
+
+    def _download_thumbnail(self, video_id: str, source_url: str) -> str | None:
+        if not source_url:
+            return None
+
+        parsed_url = urlsplit(source_url)
+        if parsed_url.scheme != "https" or parsed_url.hostname not in {
+            "i.ytimg.com",
+            "img.youtube.com",
+        }:
+            return None
+
+        target_dir = self._media_dir / "thumbnails"
+        for suffix in ("jpg", "jpeg", "png", "webp", "gif"):
+            existing = target_dir / f"{video_id}.{suffix}"
+            if existing.is_file() and existing.stat().st_size > 0:
+                return f"/media/thumbnails/{existing.name}"
+
+        request = urllib.request.Request(  # noqa: S310 - restricted to trusted HTTPS hosts
+            source_url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - URL was validated above
+                request, timeout=self._download_timeout
+            ) as response:
+                payload = response.read()
+                headers = getattr(response, "headers", None)
+                content_type = headers.get_content_type() if headers is not None else None
+        except (OSError, TimeoutError, URLError, ValueError):
+            return None
+        if not payload:
+            return None
+        suffix = self._thumbnail_suffix(source_url)
+        if content_type:
+            mapping = {
+                "image/jpeg": "jpg",
+                "image/jpg": "jpg",
+                "image/png": "png",
+                "image/webp": "webp",
+                "image/gif": "gif",
+            }
+            suffix = mapping.get(content_type, suffix)
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / f"{video_id}.{suffix}"
+            target.write_bytes(payload)
+        except OSError:
+            return None
+        return f"/media/thumbnails/{target.name}"
 
     @staticmethod
     def _run_sync(arguments: list[str], timeout_seconds: int) -> bytes:
         try:
-            completed = subprocess.run(
+            completed = subprocess.run(  # noqa: S603 - interpreter and fixed module
                 [sys.executable, "-m", "yt_dlp", *arguments],
                 capture_output=True,
                 timeout=timeout_seconds,
@@ -126,6 +187,7 @@ class YtDlpClient:
         if not isinstance(entries, list):
             raise ExternalMediaError("empty_playlist", "A playlist está vazia ou indisponível")
         tracks: list[TrackMetadata] = []
+        seen_video_ids: set[str] = set()
         for index, raw_entry in enumerate(entries, start=1):
             if not isinstance(raw_entry, dict):
                 continue
@@ -143,17 +205,28 @@ class YtDlpClient:
                 or availability in {"private", "subscriber_only", "needs_auth"}
             ):
                 continue
+            # YouTube playlists may contain the same video more than once. The
+            # data model intentionally caches one track per video and one link
+            # per playlist/track, so preserve the first occurrence only.
+            if video_id in seen_video_ids:
+                continue
+            seen_video_ids.add(video_id)
             duration_seconds = int(duration) if isinstance(duration, (int, float)) else None
             artist_raw = entry.get("channel") or entry.get("uploader")
             thumb_raw = entry.get("thumbnail")
             position_raw = entry.get("playlist_index")
+            thumbnail_url = (
+                await asyncio.to_thread(self._download_thumbnail, video_id, thumb_raw)
+                if isinstance(thumb_raw, str) and thumb_raw
+                else None
+            )
             tracks.append(
                 TrackMetadata(
                     video_id=video_id,
                     title=title[:512],
                     artist=artist_raw[:512] if isinstance(artist_raw, str) else None,
                     source_url=f"https://www.youtube.com/watch?v={video_id}",
-                    thumbnail_url=thumb_raw if isinstance(thumb_raw, str) else None,
+                    thumbnail_url=thumbnail_url,
                     duration_seconds=duration_seconds,
                     position=int(position_raw) if isinstance(position_raw, (int, float)) else index,
                 )
@@ -185,8 +258,8 @@ class YtDlpClient:
     def _convert_to_mp3(source: Path, destination: Path) -> None:
         if source == destination:
             return
-        subprocess.run(
-            [
+        subprocess.run(  # noqa: S603 - fixed ffmpeg arguments, never shell
+            [  # noqa: S607 - executable name is fixed and arguments are never shell parsed
                 "ffmpeg",
                 "-y",
                 "-i",
@@ -234,7 +307,11 @@ class YtDlpClient:
         if downloaded.suffix.lower() != ".mp3":
             try:
                 await asyncio.to_thread(self._convert_to_mp3, downloaded, result)
-            except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            except (
+                FileNotFoundError,
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+            ) as exc:
                 raise ExternalMediaError(
                     "audio_conversion_failed",
                     "Não foi possível converter o áudio para MP3",

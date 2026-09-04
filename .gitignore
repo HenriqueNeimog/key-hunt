@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.uv-cache/
+.tmp/
 .coverage
 htmlcov/
 dist/
@@ -15,4 +17,3 @@ key_hunt.db
 *.db-wal
 media/*
 !media/.gitkeep
-

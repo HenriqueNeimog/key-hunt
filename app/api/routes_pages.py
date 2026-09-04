@@ -22,6 +22,15 @@ async def game(request: Request, round_id: str) -> HTMLResponse:
     )
 
 
+@router.get("/game/session/{session_id}", response_class=HTMLResponse)
+async def session_game(request: Request, session_id: str) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="game.html",
+        context={"round_id": "", "session_id": session_id},
+    )
+
+
 @router.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="stats.html")

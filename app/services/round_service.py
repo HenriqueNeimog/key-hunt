@@ -78,6 +78,7 @@ class RoundService:
                 ),
                 audio_url=f"/api/rounds/{game_round.id}/audio" if audio_available else None,
                 can_reveal=game_round.status == RoundStatus.READY,
+                answered=game_round.result is not None,
                 error=error,
             )
 
@@ -108,6 +109,8 @@ class RoundService:
             if game_round.revealed_at is None:
                 raise ConflictError("Revele o tom antes de responder")
             if game_round.result is not None:
+                if game_round.result == result:
+                    return RoundResultResponse(result=result)
                 raise ConflictError("Esta rodada já foi respondida")
             repo.answer(game_round, result)
             return RoundResultResponse(result=result)

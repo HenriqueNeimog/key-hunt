@@ -26,3 +26,26 @@ class MusicalScale(StrEnum):
 class RoundResult(StrEnum):
     CORRECT = "correct"
     INCORRECT = "incorrect"
+
+
+class GameSessionStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
+class PreparationStatus(StrEnum):
+    PENDING = "pending"
+    ENQUEUED = "enqueued"
+    DOWNLOADING = "downloading"
+    AUDIO_READY = "audio_ready"
+    ANALYZING = "analyzing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class OutboxStatus(StrEnum):
+    PENDING = "pending"
+    PUBLISHING = "publishing"
+    PUBLISHED = "published"
+    FAILED = "failed"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.api.dependencies import (
@@ -20,10 +22,17 @@ from app.api.dependencies import (
 from app.api.routes_pages import router as pages_router
 from app.api.routes_playlists import router as playlists_router
 from app.api.routes_rounds import router as rounds_router
+from app.api.routes_sessions import router as sessions_router
 from app.api.routes_stats import router as stats_router
 from app.config import Settings, get_settings
 from app.infrastructure.db import create_db_engine, create_session_factory
 from app.infrastructure.essentia_analyzer import EssentiaKeyAnalyzer, KeyAnalyzer
+from app.infrastructure.media_processor import MediaProcessor
+from app.infrastructure.messaging import (
+    DirectEventPublisher,
+    KafkaEventPublisher,
+    OutboxPublisher,
+)
 from app.infrastructure.task_manager import TaskManager
 from app.infrastructure.yt_dlp_client import (
     AudioDownloader,
@@ -33,6 +42,7 @@ from app.infrastructure.yt_dlp_client import (
 )
 from app.services.playlist_service import PlaylistService
 from app.services.round_service import ConflictError, NotFoundError, RoundService
+from app.services.session_service import SessionService
 from app.services.stats_service import StatsService
 from app.services.url_security import InvalidPlaylistUrl
 
@@ -56,6 +66,7 @@ def create_app(
         metadata_timeout=configured.metadata_timeout_seconds,
         download_timeout=configured.download_timeout_seconds,
         max_audio_bytes=configured.max_audio_bytes,
+        media_dir=configured.resolved_media_dir,
     )
     chosen_metadata = metadata_client or yt_dlp
     chosen_downloader = downloader or yt_dlp
@@ -66,12 +77,27 @@ def create_app(
         analyzer=chosen_analyzer,
         settings=configured,
     )
+    round_service = RoundService(sessions, configured)
+    media_processor = MediaProcessor(
+        session_factory=sessions,
+        downloader=chosen_downloader,
+        analyzer=chosen_analyzer,
+        settings=configured,
+    )
+    event_publisher = (
+        KafkaEventPublisher(configured.kafka_bootstrap_servers)
+        if configured.processing_mode == "kafka"
+        else DirectEventPublisher(media_processor, configured.kafka_dlq_topic)
+    )
+    outbox = OutboxPublisher(sessions, event_publisher, configured)
     container = AppContainer(
         settings=configured,
         playlists=PlaylistService(sessions, chosen_metadata, configured),
-        rounds=RoundService(sessions, configured),
+        rounds=round_service,
         stats=StatsService(sessions),
         tasks=tasks,
+        game_sessions=SessionService(sessions, configured, round_service),
+        outbox=outbox,
     )
 
     @asynccontextmanager
@@ -79,9 +105,11 @@ def create_app(
         configured.resolved_media_dir.mkdir(parents=True, exist_ok=True)
         try:
             await tasks.recover()
+            await outbox.start()
         except OperationalError as exc:
             raise RuntimeError("Banco não migrado. Execute: alembic upgrade head") from exc
         yield
+        await outbox.close()
         await tasks.close()
         engine.dispose()
 
@@ -93,10 +121,13 @@ def create_app(
     )
     app.state.container = container
     static_dir = Path(__file__).parent / "static"
+    configured.resolved_media_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.mount("/media", StaticFiles(directory=configured.resolved_media_dir), name="media")
     app.include_router(pages_router)
     app.include_router(playlists_router)
     app.include_router(rounds_router)
+    app.include_router(sessions_router)
     app.include_router(stats_router)
 
     @app.middleware("http")
@@ -151,7 +182,52 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/health/live", tags=["health"])
+    async def liveness() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/health/ready", tags=["health"])
+    async def readiness() -> JSONResponse:
+        try:
+            await asyncio.to_thread(_check_database, engine)
+        except OperationalError:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unavailable", "database": "down"},
+            )
+        kafka_status = "not_configured"
+        if configured.processing_mode == "kafka":
+            reachable = await _kafka_reachable(configured.kafka_bootstrap_servers)
+            kafka_status = "ok" if reachable else "degraded"
+        return JSONResponse(content={"status": "ok", "database": "ok", "kafka": kafka_status})
+
     return app
+
+
+def _check_database(engine: object) -> None:
+    from sqlalchemy import Engine
+
+    if not isinstance(engine, Engine):
+        raise TypeError("Invalid database engine")
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+
+
+async def _kafka_reachable(bootstrap_servers: str) -> bool:
+    first = bootstrap_servers.split(",", 1)[0]
+    host, separator, port_text = first.rpartition(":")
+    if not separator:
+        return False
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, int(port_text)), timeout=1.0
+        )
+        del reader
+        writer.close()
+        await writer.wait_closed()
+    except (OSError, ValueError, TimeoutError):
+        return False
+    return True
 
 
 app = create_app()

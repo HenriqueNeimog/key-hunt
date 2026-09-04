@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
-from app.domain.enums import MusicalScale, RoundResult, RoundStatus
+from app.domain.enums import GameSessionStatus, MusicalScale, RoundResult, RoundStatus
 
 
 class StrictModel(BaseModel):
@@ -22,6 +22,22 @@ class RoundCreated(StrictModel):
     status: RoundStatus
 
 
+class SessionCreated(RoundCreated):
+    session_id: str
+    position: int
+    total_tracks: int
+
+
+class PrefetchStatusResponse(StrictModel):
+    ready_ahead: int
+    requested_ahead: int
+    next_ready: bool
+
+
+class NextSessionRequest(StrictModel):
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
 class TrackPublic(StrictModel):
     title: str
     artist: str | None
@@ -36,7 +52,17 @@ class RoundStatusResponse(StrictModel):
     track: TrackPublic
     audio_url: str | None
     can_reveal: bool
+    answered: bool
     error: str | None
+
+
+class SessionState(StrictModel):
+    session_id: str
+    status: GameSessionStatus
+    position: int
+    total_tracks: int
+    round: RoundStatusResponse | None
+    finished: bool
 
 
 class RevealResponse(StrictModel):

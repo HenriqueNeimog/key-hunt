@@ -10,9 +10,11 @@ from uuid import UUID, uuid4
 from fastapi import Cookie, Depends, Header, HTTPException, Request
 
 from app.config import Settings
+from app.infrastructure.messaging import OutboxPublisher
 from app.infrastructure.task_manager import TaskManager
 from app.services.playlist_service import PlaylistService
 from app.services.round_service import RoundService
+from app.services.session_service import SessionService
 from app.services.stats_service import StatsService
 
 PLAYER_COOKIE = "key_hunt_player"
@@ -26,6 +28,8 @@ class AppContainer:
     rounds: RoundService
     stats: StatsService
     tasks: TaskManager
+    game_sessions: SessionService
+    outbox: OutboxPublisher
 
 
 def container(request: Request) -> AppContainer:
