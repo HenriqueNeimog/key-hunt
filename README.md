@@ -1,97 +1,67 @@
 # Key Hunt
 
-Key Hunt é um jogo web de treino auditivo: importe uma playlist pública do YouTube,
-ouça cada faixa e tente identificar seu tom antes de revelar a análise. A ordem é
-embaralhada uma única vez por sessão e persistida no SQLite. Uma janela limitada de
-faixas é preparada antecipadamente, por um worker Kafka no ambiente Docker ou pelo
-processador inline no desenvolvimento local.
+Um jogo para treinar seus ouvidos e descobrir o tom das suas músicas favoritas.
 
-## Arquitetura
+![Tela principal do Key Hunt](docs/images/game.png)
 
-- FastAPI, Jinja2, HTMX e JavaScript leve servem páginas, APIs e o player acessível.
-- SQLAlchemy 2.x, SQLite em WAL e Alembic armazenam playlists, cache, rodadas, sessões,
-  ordem imutável, claims, resultados e o transactional outbox.
-- O publicador confirma cada item do outbox somente após o ack do Kafka. Eventos
-  `publishing` abandonados voltam a ser elegíveis após o lease.
-- O worker consome contratos Pydantic v1 com entrega at-least-once, adquire um claim
-  atômico por faixa, usa yt-dlp/FFmpeg e Essentia fora do event loop e confirma o offset
-  após persistir o resultado. Redelivery usa `processed_events`; falhas transitórias
-  recebem backoff e falhas permanentes/esgotadas vão para a DLQ.
-- O áudio e a análise válidos são cacheados globalmente em `tracks`, inclusive entre
-  sessões. Arquivos são produzidos em `media/.work` e movidos atomicamente ao nome
-  final antes de serem servidos.
+## Sobre o jogo
 
-SQLite é apropriado para esta instalação local com uma instância web e poucos workers.
-Várias réplicas de escrita ou alta concorrência exigirão PostgreSQL.
+Informe uma playlist pública do YouTube e o Key Hunt escolherá uma música para o desafio. Ouça com atenção, tente descobrir o tom e revele a resposta quando estiver pronto.
 
-## Execução local com uv
+O tom permanece escondido durante a tentativa. Depois da revelação, você pode registrar se acertou ou errou e acompanhar seu progresso nas estatísticas. As próximas músicas são preparadas antecipadamente para deixar o jogo mais fluido.
 
-Requer Python 3.12, `uv`, FFmpeg e, para análise real, Essentia.
+## Como jogar
 
-```powershell
-cd D:\key-hunt
-uv sync --all-groups --extra analysis
-uv run alembic upgrade head
-$env:KEY_HUNT_PROCESSING_MODE="inline"
-uv run uvicorn app.main:app --reload
+1. Cole o link de uma playlist do YouTube.
+2. Ouça a música sorteada.
+3. Tente identificar o tom.
+4. Revele a resposta e registre se acertou ou errou.
+
+## Telas
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/home.png" alt="Página inicial do Key Hunt com o campo para inserir uma playlist"></td>
+    <td width="50%"><img src="docs/images/game.png" alt="Player e desafio musical do Key Hunt"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Página inicial</strong></td>
+    <td align="center"><strong>Desafio musical</strong></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/reveal.png" alt="Resultado do desafio com o tom revelado"></td>
+    <td width="50%"><img src="docs/images/stats.png" alt="Estatísticas de desempenho do jogador"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Tom revelado</strong></td>
+    <td align="center"><strong>Estatísticas</strong></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/mobile.png" alt="Tela principal do Key Hunt em um dispositivo móvel" width="320">
+</p>
+
+## Executar
+
+Você precisa ter Docker e Docker Compose instalados.
+
+```bash
+docker compose up --build
 ```
 
-O modo `inline` não requer Kafka e usa exatamente o mesmo contrato/outbox/processador.
-Para executar processos separados contra um Kafka disponível:
+Depois, abra [http://localhost:8000](http://localhost:8000) no navegador.
 
-```powershell
-$env:KEY_HUNT_PROCESSING_MODE="kafka"
-$env:KEY_HUNT_KAFKA_BOOTSTRAP_SERVERS="localhost:9092"
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-uv run python -m app.worker
-```
+## Licença
 
-## Docker (Kafka KRaft, web e worker)
+O código-fonte do Key Hunt é disponibilizado sob a [Apache License 2.0](LICENSE).
 
-```powershell
-docker compose up --build -d
-docker compose ps
-docker compose --profile test run --rm integration-tests
-docker compose logs -f web worker
-docker compose down
-```
+Você pode utilizar, reproduzir e modificar este projeto, desde que preserve os avisos de autoria e atribuição. Consulte também o arquivo [NOTICE](NOTICE).
 
-O Compose usa Kafka oficial 4.3.1 em KRaft, sem ZooKeeper. Web e worker compartilham o
-volume de SQLite/mídia. `PROCESSING_MODE=kafka` é obrigatório nesse ambiente.
+Copyright © 2026 Henrique Neimog.
 
-## Qualidade e migrations
+Músicas, thumbnails e outros conteúdos obtidos do YouTube permanecem sujeitos aos direitos de seus respectivos proprietários.
 
-```powershell
-uv run alembic upgrade head
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy --strict
-uv run pytest
-uv run pytest -m integration
-```
+## Autor
 
-Os testes padrão usam fakes e não acessam YouTube nem Kafka. O marcador `integration`
-é reservado ao broker real e à análise nativa opcional.
-
-## Operação e segurança
-
-As rotas que alteram estado exigem CSRF e as rodadas/sessões pertencem ao cookie
-assinado do jogador. Status de sessão expõe somente a faixa atual; status de prefetch
-contém contagens genéricas. Tom, escala e confiança só saem no endpoint explícito de
-revelação. O diretório de mídia não é público e a rota de áudio valida o caminho.
-
-Health checks: `/health/live` indica processo vivo e `/health/ready` valida banco e
-informa Kafka como `ok`, `degraded` ou `not_configured`. Uma indisponibilidade do broker
-não impede novas sessões: os trabalhos permanecem no outbox.
-
-Para reprocessar com segurança um evento já publicado na DLQ, use seu UUID registrado
-nos logs/outbox. O comando valida o contrato e os agregados, cria um novo `event_id` e
-passa novamente pelo outbox (repetir o mesmo comando não duplica o replay):
-
-```powershell
-uv run python -m app.admin requeue-dlq EVENT_ID
-```
-
-Use apenas conteúdo que você tem direito de acessar. O projeto não contorna DRM,
-login, playlists privadas ou restrições do YouTube. Disponibilidade e regras do YouTube,
-precisão do Essentia e espaço local continuam sendo limitações externas.
+Desenvolvido por **Henrique Neimog**.
